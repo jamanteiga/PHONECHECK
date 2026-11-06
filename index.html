@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phone Check ES</title>
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Phone Check">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230f172a'/%3E%3Ctext x='50' y='66' font-size='56' text-anchor='middle'%3E%F0%9F%93%B1%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230f172a'/%3E%3Ctext x='50' y='66' font-size='56' text-anchor='middle'%3E%F0%9F%93%B1%3C/text%3E%3C/svg%3E">
+<style>
+:root{--bg:#0f172a;--card:#1e293b;--line:#334155;--txt:#e2e8f0;--mut:#94a3b8;--ac:#38bdf8;--ok:#4ade80;--ko:#f87171;--wa:#fbbf24}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom))}
+main{max-width:520px;margin:0 auto}
+header{display:flex;justify-content:space-between;align-items:center;padding:18px 0 10px}
+h1{font-size:1.25rem;margin:0}
+button{font:inherit;border:0;border-radius:10px;padding:12px 16px;background:var(--ac);color:#0b1220;font-weight:600;cursor:pointer}
+button.sec{background:var(--card);color:var(--txt);border:1px solid var(--line)}
+button:disabled{opacity:.5}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px}
+.row{display:flex;gap:8px}
+.pre{display:flex;align-items:center;padding:0 12px;background:#0b1220;border:1px solid var(--line);border-radius:10px;color:var(--mut)}
+input,select{width:100%;font:inherit;color:var(--txt);background:#0b1220;border:1px solid var(--line);border-radius:10px;padding:12px}
+input#num{font-size:1.3rem;letter-spacing:.08em}
+label{display:block;font-size:.85rem;color:var(--mut);margin:12px 0 4px}
+.hint{font-size:.82rem;color:var(--mut);margin-top:6px}
+.err{color:var(--ko)}
+table{width:100%;border-collapse:collapse}
+td{padding:8px 0;border-bottom:1px solid var(--line);vertical-align:top}
+td:first-child{color:var(--mut);width:42%;padding-right:8px}
+tr:last-child td{border-bottom:0}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-weight:700;font-size:.9rem}
+.b-ok{background:#14532d;color:var(--ok)}.b-ko{background:#7f1d1d;color:var(--ko)}.b-wa{background:#78350f;color:var(--wa)}
+h2{font-size:.95rem;margin:0 0 8px;color:var(--ac)}
+details summary{cursor:pointer;color:var(--mut)}
+pre{white-space:pre-wrap;word-break:break-word;font-size:.78rem;color:var(--mut);margin:8px 0 0}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>📱 Phone Check ES</h1>
+  <button class="sec" id="btnCfg" type="button">Ajustes</button>
+</header>
+
+<section class="card">
+  <label for="num" style="margin-top:0">Móvil español (sin +34)</label>
+  <div class="row">
+    <div class="pre">+34</div>
+    <input id="num" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="600 123 456">
+  </div>
+  <div class="hint" id="hintNum">9 dígitos, empieza por 6 o 7.</div>
+  <div class="row" style="margin-top:12px">
+    <button id="btnGo" type="button" style="flex:1">Consultar</button>
+    <button class="sec" id="btnClr" type="button">Limpiar</button>
+  </div>
+</section>
+
+<section class="card hidden" id="cfg">
+  <h2>Configuración</h2>
+  <label for="prov">Proveedor HLR</label>
+  <select id="prov">
+    <option value="hlrlookup">HLRLookup.com</option>
+    <option value="twilio">Twilio Lookup</option>
+    <option value="vonage">Vonage Number Insight</option>
+    <option value="telnyx">Telnyx</option>
+    <option value="infobip">Infobip</option>
+    <option value="custom">Personalizado</option>
+  </select>
+  <label for="proxy">URL de tu proxy / función serverless</label>
+  <input id="proxy" type="url" placeholder="https://tu-proxy.example.com/lookup" autocomplete="off">
+  <label for="tok">Token de acceso al proxy (opcional)</label>
+  <input id="tok" type="password" placeholder="Bearer token de tu proxy" autocomplete="off">
+  <div class="hint">La clave del proveedor HLR va en el servidor del proxy, nunca aquí. Esta app envía <code>POST {provider, number}</code> con el número en formato E.164 y muestra lo que devuelva. Se guarda solo en este dispositivo.</div>
+  <div class="row" style="margin-top:12px"><button id="btnSave" type="button" style="flex:1">Guardar</button></div>
+</section>
+
+<section class="card hidden" id="local">
+  <h2>Validación local</h2>
+  <table id="tLocal"></table>
+</section>
+
+<section class="card hidden" id="net">
+  <h2>Resultado de la red (HLR)</h2>
+  <div id="netBody"></div>
+</section>
+</main>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const KEY = 'phonecheck.cfg';
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e){ return {}; } };
+  let cfg = load();
+  $('prov').value = cfg.prov || 'hlrlookup';
+  $('proxy').value = cfg.proxy || '';
+  $('tok').value = cfg.tok || '';
+
+  $('btnCfg').onclick = () => $('cfg').classList.toggle('hidden');
+  $('btnSave').onclick = () => {
+    cfg = { prov: $('prov').value, proxy: $('proxy').value.trim(), tok: $('tok').value.trim() };
+    try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch(e){}
+    $('cfg').classList.add('hidden');
+  };
+  if (!cfg.proxy) $('cfg').classList.remove('hidden');
+
+  const numEl = $('num');
+  const digits = s => s.replace(/\D/g,'').replace(/^(0034|34)(?=\d{9}$)/,'');
+  numEl.addEventListener('input', () => {
+    const d = digits(numEl.value).slice(0,9);
+    numEl.value = d.replace(/(\d{3})(\d{0,3})(\d{0,3})/, (m,a,b,c)=>[a,b,c].filter(Boolean).join(' '));
+  });
+  numEl.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+
+  // Móvil español: 6xx, o 7[1-4]x (7[05-9]x son otros servicios)
+  function validate(d){
+    if (d.length !== 9) return 'Deben ser 9 dígitos.';
+    if (!/^[67]/.test(d)) return 'Un móvil español empieza por 6 o 7.';
+    if (d[0] === '7' && !/[1-4]/.test(d[1])) return 'Los rangos 70 y 75-79 no son móviles.';
+    return null;
+  }
+
+  function rows(el, data){
+    el.innerHTML = data.map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  }
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  function flatten(o, p='', out={}){
+    if (o && typeof o === 'object') {
+      for (const k in o) flatten(o[k], p ? p+'.'+k : k, out);
+    } else out[p] = o;
+    return out;
+  }
+  function pick(flat, re){
+    for (const k in flat) if (re.test(k) && flat[k] !== null && flat[k] !== '') return flat[k];
+    return undefined;
+  }
+  const yes = v => v === true || /^(true|yes|1|live|active|connected|reachable|delivered)$/i.test(String(v));
+  const no  = v => v === false || /^(false|no|0|dead|inactive|absent|unreachable|disconnected|undelivered|not[_ ]?reachable)$/i.test(String(v));
+
+  function renderNet(json){
+    const f = flatten(json);
+    const status = pick(f, /(^|\.)(live_?status|status|reachable|active|connected|live)$/i);
+    const carrier = pick(f, /(current|network|carrier).*(name|network)?$/i) ?? pick(f, /carrier/i);
+    const orig = pick(f, /original.*(network|carrier|name)/i);
+    const ported = pick(f, /ported/i);
+    const roam = pick(f, /roaming.*(country|name|network)?$/i);
+    const type = pick(f, /(line_?type|number_?type|type)$/i);
+    const mccmnc = pick(f, /(mccmnc|mcc_?mnc|mcc)/i);
+
+    let badge = '';
+    if (status !== undefined) {
+      badge = yes(status) ? '<span class="badge b-ok">Activa</span>'
+            : no(status)  ? '<span class="badge b-ko">Inactiva / no alcanzable</span>'
+            : `<span class="badge b-wa">${esc(status)}</span>`;
+    }
+    const data = [];
+    if (badge) data.push(['Estado de la línea', badge]);
+    if (carrier !== undefined) data.push(['Operadora actual', esc(carrier)]);
+    if (orig !== undefined) data.push(['Operadora original', esc(orig)]);
+    if (ported !== undefined) data.push(['Portado', yes(ported) ? 'Sí' : no(ported) ? 'No' : esc(ported)]);
+    if (roam !== undefined && !/^(false|no|0)$/i.test(String(roam))) data.push(['Roaming', esc(roam)]);
+    if (type !== undefined) data.push(['Tipo de línea', esc(type)]);
+    if (mccmnc !== undefined) data.push(['MCC/MNC', esc(mccmnc)]);
+
+    $('netBody').innerHTML =
+      (data.length ? '<table>' + data.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('') + '</table>'
+                   : '<div class="hint">El proveedor no devolvió campos reconocibles; mira la respuesta completa.</div>') +
+      `<details style="margin-top:10px"><summary>Respuesta completa</summary><pre>${esc(JSON.stringify(json,null,2))}</pre></details>`;
+  }
+
+  async function go(){
+    const d = digits(numEl.value);
+    const err = validate(d);
+    $('local').classList.remove('hidden');
+    $('net').classList.add('hidden');
+    if (err) {
+      $('hintNum').textContent = err; $('hintNum').className = 'hint err';
+      rows($('tLocal'), [['Formato', '<span class="badge b-ko">No válido</span>'], ['Motivo', esc(err)]]);
+      return;
+    }
+    $('hintNum').textContent = '9 dígitos, empieza por 6 o 7.'; $('hintNum').className = 'hint';
+    const e164 = '+34' + d;
+    rows($('tLocal'), [
+      ['Formato', '<span class="badge b-ok">Válido</span>'],
+      ['Tipo (por rango)', 'Móvil'],
+      ['E.164', e164],
+      ['Nacional', d.replace(/(\d{3})(\d{3})(\d{3})/,'$1 $2 $3')],
+      ['Internacional', '+34 ' + d.replace(/(\d{3})(\d{3})(\d{3})/,'$1 $2 $3')],
+      ['País', 'España (ES)'],
+      ['Nota', '<span class="hint">La operadora real solo la da la consulta HLR: por portabilidad el prefijo no es fiable.</span>']
+    ]);
+
+    if (!cfg.proxy) {
+      $('net').classList.remove('hidden');
+      $('netBody').innerHTML = '<div class="hint err">Configura la URL de tu proxy en Ajustes para consultar el estado de la línea.</div>';
+      return;
+    }
+    $('net').classList.remove('hidden');
+    $('netBody').innerHTML = '<div class="hint">Consultando…</div>';
+    $('btnGo').disabled = true;
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (cfg.tok) headers.Authorization = 'Bearer ' + cfg.tok;
+      const r = await fetch(cfg.proxy, { method:'POST', headers, body: JSON.stringify({ provider: cfg.prov, number: e164 }) });
+      const txt = await r.text();
+      let json; try { json = JSON.parse(txt); } catch(e){ json = { raw: txt }; }
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' — ' + txt.slice(0,200));
+      renderNet(json);
+    } catch (e) {
+      $('netBody').innerHTML = '<div class="hint err">Error: ' + esc(e.message) + '</div>';
+    } finally { $('btnGo').disabled = false; }
+  }
+  $('btnGo').onclick = go;
+  $('btnClr').onclick = () => { numEl.value=''; $('local').classList.add('hidden'); $('net').classList.add('hidden'); numEl.focus(); };
+
+  // Manifest inline para poder instalarla como PWA
+  const manifest = {
+    name:'Phone Check ES', short_name:'Phone Check', start_url:'./', display:'standalone',
+    background_color:'#0f172a', theme_color:'#0f172a',
+    icons:[{src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%230f172a'/%3E%3Ctext x='50' y='66' font-size='56' text-anchor='middle'%3E%F0%9F%93%B1%3C/text%3E%3C/svg%3E",sizes:'512x512',type:'image/svg+xml',purpose:'any'}]
+  };
+  const l = document.createElement('link'); l.rel='manifest';
+  l.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'}));
+  document.head.appendChild(l);
+})();
+</script>
+</body>
+</html>
