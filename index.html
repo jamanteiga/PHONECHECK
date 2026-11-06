@@ -37,6 +37,8 @@ tr:last-child td{border-bottom:0}
 h2{font-size:.95rem;margin:0 0 8px;color:var(--ac)}
 details summary{cursor:pointer;color:var(--mut)}
 pre{white-space:pre-wrap;word-break:break-word;font-size:.78rem;color:var(--mut);margin:8px 0 0}
+.citem{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.citem span{color:var(--mut);white-space:nowrap}
 .hidden{display:none}
 </style>
 </head>
@@ -54,10 +56,24 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:.78rem;color:var(--mut)
     <input id="num" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="600 123 456">
   </div>
   <div class="hint" id="hintNum">9 dígitos, empieza por 6 o 7.</div>
+  <div class="hint" id="who" style="color:var(--ok)"></div>
   <div class="row" style="margin-top:12px">
     <button id="btnGo" type="button" style="flex:1">Consultar</button>
     <button class="sec" id="btnClr" type="button">Limpiar</button>
   </div>
+</section>
+
+<section class="card" id="contactsCard">
+  <h2>Mis contactos <span class="hint" id="cCount"></span></h2>
+  <div class="row">
+    <button class="sec" id="btnVcf" type="button" style="flex:1">Importar .vcf</button>
+    <button class="sec" id="btnPick" type="button" style="flex:1">Elegir del móvil</button>
+    <button class="sec" id="btnCDel" type="button">Borrar</button>
+  </div>
+  <input type="file" id="fileVcf" accept=".vcf,text/vcard,text/x-vcard" class="hidden">
+  <input id="cSearch" placeholder="Buscar por nombre o número" style="margin-top:10px" autocomplete="off">
+  <div id="cList"></div>
+  <div class="hint">Se guardan solo en este dispositivo y no se envían a ningún sitio. «Elegir del móvil» solo existe en Chrome para Android; en iPhone importa un .vcf.</div>
 </section>
 
 <section class="card hidden" id="cfg">
@@ -66,10 +82,6 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:.78rem;color:var(--mut)
   <select id="prov">
     <option value="hlrlookup">HLRLookup.com</option>
     <option value="twilio">Twilio Lookup</option>
-    <option value="vonage">Vonage Number Insight</option>
-    <option value="telnyx">Telnyx</option>
-    <option value="infobip">Infobip</option>
-    <option value="custom">Personalizado</option>
   </select>
   <label for="proxy">URL de tu proxy / función serverless</label>
   <input id="proxy" type="url" placeholder="https://tu-proxy.example.com/lookup" autocomplete="off">
@@ -142,7 +154,21 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:.78rem;color:var(--mut)
   const yes = v => v === true || /^(true|yes|1|live|active|connected|reachable|delivered)$/i.test(String(v));
   const no  = v => v === false || /^(false|no|0|dead|inactive|absent|unreachable|disconnected|undelivered|not[_ ]?reachable)$/i.test(String(v));
 
+  function renderNorm(json){
+    const n = json.normalized, data = [];
+    const badge = n.activa === true ? '<span class="badge b-ok">Activa</span>'
+                : n.activa === false ? '<span class="badge b-ko">Inactiva</span>'
+                : '<span class="badge b-wa">Sin determinar</span>';
+    data.push(['Estado de la línea', badge + (n.estado_texto ? '<div class="hint">' + esc(n.estado_texto) + '</div>' : '')]);
+    [['Operadora actual', n.operadora_actual], ['Operadora original', n.operadora_original],
+     ['Portado', n.portado], ['Tipo de línea', n.tipo], ['MCC/MNC', n.mccmnc],
+     ['Zona', n.area], ['Coste', n.coste]].forEach(([k, v]) => { if (v) data.push([k, esc(v)]); });
+    $('netBody').innerHTML = '<table>' + data.map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('') + '</table>' +
+      `<details style="margin-top:10px"><summary>Respuesta completa</summary><pre>${esc(JSON.stringify(json.raw || json, null, 2))}</pre></details>`;
+  }
+
   function renderNet(json){
+    if (json && json.normalized) return renderNorm(json);
     const f = flatten(json);
     const status = pick(f, /(^|\.)(live_?status|status|reachable|active|connected|live)$/i);
     const carrier = pick(f, /(current|network|carrier).*(name|network)?$/i) ?? pick(f, /carrier/i);
@@ -192,6 +218,7 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:.78rem;color:var(--mut)
       ['Nacional', d.replace(/(\d{3})(\d{3})(\d{3})/,'$1 $2 $3')],
       ['Internacional', '+34 ' + d.replace(/(\d{3})(\d{3})(\d{3})/,'$1 $2 $3')],
       ['País', 'España (ES)'],
+      ...contactRows(d),
       ['Nota', '<span class="hint">La operadora real solo la da la consulta HLR: por portabilidad el prefijo no es fiable.</span>']
     ]);
 
@@ -215,6 +242,91 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:.78rem;color:var(--mut)
       $('netBody').innerHTML = '<div class="hint err">Error: ' + esc(e.message) + '</div>';
     } finally { $('btnGo').disabled = false; }
   }
+  // ---------- Contactos personales (solo en este dispositivo) ----------
+  const CK = 'phonecheck.contacts';
+  let contacts = {}; // móvil de 9 dígitos -> [nombres]
+  try { contacts = JSON.parse(localStorage.getItem(CK)) || {}; } catch(e){}
+  const saveC = () => { try { localStorage.setItem(CK, JSON.stringify(contacts)); } catch(e){ alert('No cabe en el almacenamiento del navegador.'); } };
+  const fmt9 = d => d.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3');
+
+  function norm9(t){
+    const d = String(t).replace(/\D/g,'').replace(/^(00)?34(?=\d{9}$)/,'');
+    return validate(d) === null ? d : null;
+  }
+  function addC(name, tel){
+    const d = norm9(tel);
+    if (!d) return false;
+    const arr = contacts[d] || (contacts[d] = []);
+    if (!arr.includes(name)) arr.push(name);
+    return true;
+  }
+  function parseVcf(text){
+    let n = 0;
+    text = text.replace(/\r?\n[ \t]/g, ''); // líneas plegadas
+    text.split(/BEGIN:VCARD/i).slice(1).forEach(b => {
+      const fn = b.match(/^FN[^:\r\n]*:(.*)$/im);
+      const nn = b.match(/^N[^:\r\n]*:(.*)$/im);
+      const name = ((fn && fn[1]) || (nn && nn[1].split(';').filter(Boolean).reverse().join(' ')) || '').trim() || '(sin nombre)';
+      for (const m of b.matchAll(/^(?:item\d+\.)?TEL[^:\r\n]*:(.*)$/gim)) if (addC(name, m[1].trim())) n++;
+    });
+    return n;
+  }
+  function renderC(){
+    const total = Object.keys(contacts).length;
+    $('cCount').textContent = total ? '· ' + total + ' móviles' : '';
+    const q = $('cSearch').value.trim().toLowerCase(), qd = q.replace(/\D/g,'');
+    if (!q) { $('cList').innerHTML = ''; return; }
+    const out = [];
+    for (const d in contacts) {
+      const names = contacts[d].join(', ');
+      if (names.toLowerCase().includes(q) || (qd && d.includes(qd))) out.push([d, names]);
+      if (out.length >= 30) break;
+    }
+    $('cList').innerHTML = out.map(([d, n]) => `<div class="citem" data-d="${d}"><b>${esc(n)}</b><span>${fmt9(d)}</span></div>`).join('')
+      || '<div class="hint">Sin resultados.</div>';
+  }
+  function contactRows(d){
+    if (contacts[d]) return [['En tus contactos', '<span class="badge b-ok">Sí</span> ' + esc(contacts[d].join(', '))]];
+    return Object.keys(contacts).length ? [['En tus contactos', 'No aparece']] : [];
+  }
+  function updateWho(){
+    const d = digits(numEl.value);
+    $('who').textContent = contacts[d] ? 'En tus contactos: ' + contacts[d].join(', ') : '';
+  }
+
+  numEl.addEventListener('input', updateWho);
+  $('cSearch').addEventListener('input', renderC);
+  $('cList').onclick = e => {
+    const it = e.target.closest('.citem');
+    if (!it) return;
+    numEl.value = fmt9(it.dataset.d);
+    updateWho();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    go();
+  };
+  $('btnVcf').onclick = () => $('fileVcf').click();
+  $('fileVcf').onchange = e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => { const n = parseVcf(String(rd.result)); saveC(); renderC(); $('cCount').textContent += ' (+' + n + ' importados)'; };
+    rd.readAsText(f);
+    e.target.value = '';
+  };
+  if (!('contacts' in navigator && 'ContactsManager' in window)) $('btnPick').classList.add('hidden');
+  $('btnPick').onclick = async () => {
+    try {
+      const sel = await navigator.contacts.select(['name','tel'], { multiple: true });
+      sel.forEach(c => { const name = (c.name && c.name[0]) || '(sin nombre)'; (c.tel || []).forEach(t => addC(name, t)); });
+      saveC(); renderC();
+    } catch(e){}
+  };
+  $('btnCDel').onclick = () => {
+    if (!confirm('¿Borrar todos los contactos guardados en este dispositivo?')) return;
+    contacts = {}; saveC(); renderC(); updateWho();
+  };
+  renderC();
+
   $('btnGo').onclick = go;
   $('btnClr').onclick = () => { numEl.value=''; $('local').classList.add('hidden'); $('net').classList.add('hidden'); numEl.focus(); };
 

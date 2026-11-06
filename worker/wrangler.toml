@@ -1,0 +1,12 @@
+name = "phonecheck-proxy"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+[vars]
+# Origen(es) desde donde se sirve la PWA, separados por comas (sin barra final ni ruta)
+ALLOWED_ORIGIN = "https://jamanteiga.github.io"
+
+# Secretos (no van aquí; se crean con `npx wrangler secret put NOMBRE`):
+#   PROXY_TOKEN        token que pegas en Ajustes de la PWA
+#   HLR_API_KEY, HLR_API_SECRET        (si usas HLRLookup.com)
+#   TWILIO_API_KEY, TWILIO_API_SECRET  (si usas Twilio)
